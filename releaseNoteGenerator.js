@@ -1,7 +1,7 @@
 const axios = require('axios');
-require('dotenv').config();
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
+require('dotenv').config();
 
 class ReleaseNoteGenerator {
 	constructor(owner, repo, token) {
@@ -30,27 +30,33 @@ class ReleaseNoteGenerator {
 	}
 
 	async getMergedPullRequests(tagName) {
-		const config = {
-			headers: {
-				Authorization: `token ${this.token}`,
-				Accept: 'application/vnd.github.v3+json',
-			},
-		};
-
-		const response = await axios.get(
-			`${this.apiBaseUrl}/repos/${this.owner}/${this.repo}/pulls`,
-			{
-				...config,
-				params: {
-					state: 'closed',
-					sort: 'updated',
-					direction: 'desc',
-					per_page: 100,
+		try {
+			const config = {
+				headers: {
+					Authorization: `token ${this.token}`,
+					Accept: 'application/vnd.github.v3+json',
 				},
-			}
-		);
+			};
 
-		return response.data.filter((pr) => pr.merged_at !== null);
+			const response = await axios.get(
+				`${this.apiBaseUrl}/repos/${this.owner}/${this.repo}/pulls`,
+				{
+					...config,
+					params: {
+						state: 'closed',
+						sort: 'updated',
+						direction: 'desc',
+						per_page: 100,
+					},
+				}
+			);
+
+			// Filter for merged pull requests only
+			return response.data.filter((pr) => pr.merged_at !== null);
+		} catch (error) {
+			console.error('Error fetching pull requests:', error.message);
+			throw error;
+		}
 	}
 
 	categorizePullRequests(pullRequests) {
@@ -91,56 +97,159 @@ class ReleaseNoteGenerator {
 			}
 		}
 
-		// Generate PDF
+		// Clean up old files
+		this.cleanupOldFiles();
+
+		// Generate PDF and Markdown files
 		this.generatePDF(categorizedPRs, tagName);
+		this.generateMarkdownFile(markdownNotes, tagName);
 
 		return markdownNotes;
 	}
 
-	generatePDF(categorizedPRs, tagName) {
-		const doc = new PDFDocument();
-		const outputPath = `release-notes-${tagName}.pdf`;
+	cleanupOldFiles() {
+		try {
+			// Clean up PDF files
+			const files = fs.readdirSync('.');
+			const releaseNoteFiles = files.filter(
+				(file) =>
+					file.startsWith('release-notes-') &&
+					(file.endsWith('.pdf') || file.endsWith('.md'))
+			);
 
-		// Pipe the PDF output to a file
+			releaseNoteFiles.forEach((file) => {
+				fs.unlinkSync(file);
+				console.log(`Cleaned up old file: ${file}`);
+			});
+		} catch (error) {
+			console.error('Error cleaning up old files:', error.message);
+		}
+	}
+
+	generateMarkdownFile(markdownContent, tagName) {
+		try {
+			const outputPath = `release-notes-${tagName}.md`;
+			fs.writeFileSync(outputPath, markdownContent);
+			console.log(`Markdown file generated successfully: ${outputPath}`);
+		} catch (error) {
+			console.error('Error generating markdown file:', error.message);
+		}
+	}
+
+	generatePDF(categorizedPRs, tagName) {
+		const doc = new PDFDocument({
+			size: 'A4',
+			margins: {
+				top: 72,
+				bottom: 72,
+				left: 72,
+				right: 72,
+			},
+		});
+
+		const outputPath = `release-notes-${tagName}.pdf`;
 		doc.pipe(fs.createWriteStream(outputPath));
 
-		// Add title
-		doc
-			.fontSize(24)
-			.font('Helvetica-Bold')
-			.text(`Release Notes - ${tagName}`, {
-				align: 'center',
-			})
-			.moveDown(2);
+		// Header background image
+		try {
+			if (fs.existsSync('./assets/header-bg.png')) {
+				doc.image('./assets/header-bg.png', 0, 0, {
+					width: doc.page.width,
+					height: 150,
+				});
+			}
+		} catch (error) {
+			console.log('No header background image found, skipping...');
+		}
 
-		// Add categories and their pull requests
+		// Title section with logo
+		doc.save();
+		try {
+			if (fs.existsSync('./assets/logo.png')) {
+				doc.image('./assets/logo.png', 72, 30, {
+					fit: [100, 50],
+					align: 'left',
+				});
+			}
+		} catch (error) {
+			console.log('No logo found, skipping...');
+		}
+
+		// Title text positioned next to logo
+		doc
+			.fontSize(28)
+			.font('Helvetica-Bold')
+			.fillColor('white')
+			.text('Release Notes', 200, 40, {
+				align: 'left',
+			});
+
+		doc.restore();
+
+		// Version and Date
+		doc
+			.fontSize(16)
+			.font('Helvetica')
+			.fillColor('#7f8c8d')
+			.text(`Version: ${tagName}`, 72, 180, {
+				align: 'left',
+			})
+			.text(`Release Date: ${new Date().toLocaleDateString()}`, {
+				align: 'left',
+			});
+
+		// Categories and their pull requests
+		let yPosition = 250;
+
 		for (const [category, prs] of Object.entries(categorizedPRs)) {
 			if (prs.length > 0) {
-				doc.fontSize(16).font('Helvetica-Bold').text(category).moveDown(0.5);
+				if (yPosition > doc.page.height - 150) {
+					doc.addPage();
+					yPosition = 72;
+				}
+
+				doc
+					.fontSize(14)
+					.font('Helvetica-Bold')
+					.fillColor('#34495e')
+					.text(category, 72, yPosition);
+
+				yPosition += 30;
 
 				prs.forEach((pr) => {
+					if (yPosition > doc.page.height - 150) {
+						doc.addPage();
+						yPosition = 72;
+					}
+
 					doc
 						.fontSize(12)
 						.font('Helvetica')
-						.text(`• ${pr.title} (#${pr.number})`)
-						.moveDown(0.2);
+						.fillColor('#2c3e50')
+						.text(`• ${pr.title} (#${pr.number})`, 72, yPosition);
+
+					yPosition += 20;
 				});
 
-				doc.moveDown(1);
+				yPosition += 20;
 			}
 		}
 
-		// Add footer with generation date
+		// Footer
 		doc
 			.fontSize(10)
 			.font('Helvetica')
-			.text(`Generated on ${new Date().toLocaleDateString()}`, {
-				align: 'center',
-			});
+			.fillColor('#95a5a6')
+			.text(
+				`Generated on ${new Date().toLocaleDateString()}`,
+				72,
+				doc.page.height - 50,
+				{
+					align: 'center',
+				}
+			);
 
-		// Finalize the PDF
 		doc.end();
-
 		console.log(`PDF generated successfully: ${outputPath}`);
 	}
 }
@@ -160,7 +269,10 @@ async function main() {
 
 	try {
 		const releaseNotes = await generator.generateReleaseNotes('v1.0.0');
-		console.log(releaseNotes);
+		console.log('\nRelease notes generated successfully!');
+		console.log('Check the following files:');
+		console.log(`- PDF: release-notes-v1.0.0.pdf`);
+		console.log(`- Markdown: release-notes-v1.0.0.md`);
 	} catch (error) {
 		console.error('Failed to generate release notes:', error);
 	}
