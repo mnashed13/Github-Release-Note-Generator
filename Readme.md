@@ -20,6 +20,10 @@
 - 📄 Generates formatted markdown output
 - ⚙️ Customizable categorization logic
 - 🔧 Simple configuration using environment variables
+- 📧 Email notification support with customizable templates
+- 📄 Attachments of generated release notes (PDF and Markdown)
+- 🔄 Support for generating release notes between any two versions
+- 🎯 Flexible version specification via .env or command line
 
 ## 📋 Prerequisites
 
@@ -42,44 +46,122 @@
    npm install
    ```
 
-3. Create a `.env` file in the root directory with the following variables:
+3. Copy `.env-example` to `.env` and configure your environment variables:
 
-   ```env
-   GITHUB_TOKEN=your_github_personal_access_token
-   GITHUB_OWNER=repository_owner
-   GITHUB_REPO=repository_name
+   ```bash
+   cp .env-example .env
    ```
 
-   To get a GitHub Personal Access Token:
+## ⚙️ Configuration
 
-   1. Go to GitHub Settings > Developer settings > Personal access tokens
-   2. Click "Generate new token"
-   3. Select the `repo` scope
-   4. Copy the generated token and add it to your `.env` file
+### Required Environment Variables
+
+Create or modify your `.env` file with the following required settings:
+
+```env
+# GitHub Configuration (Required)
+GITHUB_OWNER=your-username-or-org
+GITHUB_REPO=your-repository-name
+GITHUB_TOKEN=your-github-personal-access-token
+
+# Release Versions (Optional)
+END_VERSION=v2.0.0
+START_VERSION=v1.0.0  # Optional - if not specified, will use previous release
+
+# Email Settings (Optional - for email notifications)
+EMAIL_FROM=release-bot@example.com
+EMAIL_TO=team@example.com
+EMAIL_CC=optional@example.com
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=true
+SMTP_USER=your-smtp-username
+SMTP_PASS=your-smtp-password
+```
+
+To get a GitHub Personal Access Token:
+
+1. Go to GitHub Settings > Developer settings > Personal access tokens
+2. Click "Generate new token"
+3. Select the `repo` scope
+4. Copy the generated token and add it to your `.env` file
 
 ## 💻 Usage
 
 ### Basic Usage
 
-Run the script with default settings:
+You can specify release versions in three ways:
 
-```bash
-node releaseNoteGenerator.js
+1. **Using Command Line Arguments** (Highest Priority):
+
+   ```bash
+   # Generate notes between two specific versions
+   node releaseNoteGenerator.js v2.0.0 v1.0.0
+
+   # Generate notes from previous release to v2.0.0
+   node releaseNoteGenerator.js v2.0.0
+   ```
+
+2. **Using Environment Variables** in `.env` file:
+
+   ```env
+   END_VERSION=v2.0.0
+   START_VERSION=v1.0.0  # Optional
+   ```
+
+   Then run:
+
+   ```bash
+   node releaseNoteGenerator.js
+   ```
+
+3. **Mix and Match**:
+
+   - Set default versions in `.env`
+   - Override when needed via command line
+
+   ```bash
+   # Override both versions
+   node releaseNoteGenerator.js v2.1.0 v2.0.0
+
+   # Override only end version (will use START_VERSION from .env)
+   node releaseNoteGenerator.js v2.1.0
+   ```
+
+### Output
+
+The generator will create two files in the `output` directory:
+
+- `release-notes-{version}.md` - Markdown format
+- `release-notes-{version}.pdf` - PDF format with styling
+
+### Email Notifications
+
+If email settings are configured in `.env`, you can send release notes via email:
+
+```javascript
+const generator = new ReleaseNoteGenerator(owner, repo, token);
+await generator.generateReleaseNotes(endVersion, startVersion, {
+	generateEmail: true,
+	sendEmail: true,
+});
 ```
 
-## 📝 Output Format
+## 📝 Pull Request Categorization
 
-The generator creates two outputs:
+Pull requests are automatically categorized based on their labels:
 
-1. A PDF file named `release-notes-{tagName}.pdf` in your project directory
-2. A markdown-formatted string (returned by the generateReleaseNotes method)
+- **Features**: PRs with 'feature' or 'enhancement' labels
+- **Bug Fixes**: PRs with 'bug' or 'fix' labels
+- **Documentation**: PRs with 'documentation' label
+- **Other**: PRs without any of the above labels
 
-The PDF includes:
+## 🎨 Customization
 
-- Professional formatting with proper headings
-- Categorized pull requests
-- Generation date
-- Pull request numbers and titles
+- Add your logo at `./assets/logo.png`
+- Add header background at `./assets/header-bg.png`
+- Customize email template in `./Template/email-template.eml`
+- Modify categorization logic in `categorizePullRequests()` method
 
 ## 📜 License
 

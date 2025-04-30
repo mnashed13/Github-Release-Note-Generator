@@ -4,11 +4,16 @@
 	"description": "A tool to generate release notes from GitHub pull requests",
 	"main": "releaseNoteGenerator.js",
 	"scripts": {
-		"start": "node releaseNoteGenerator.js"
+		"start": "node releaseNoteGenerator.js",
+		"generate": "node releaseNoteGenerator.js"
 	},
 	"dependencies": {
 		"axios": "^1.8.4",
 		"dotenv": "^16.4.7",
+		"nodemailer": "^6.10.1",
 		"pdfkit": "^0.13.0"
+	},
+	"engines": {
+		"node": ">=18.0.0"
 	}
 }

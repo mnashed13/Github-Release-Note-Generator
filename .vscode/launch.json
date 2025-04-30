@@ -4,19 +4,42 @@
 		{
 			"type": "node",
 			"request": "launch",
-			"name": "Debug Release Note Generator",
+			"name": "Generate Notes (from ENV)",
 			"skipFiles": ["<node_internals>/**"],
 			"program": "${workspaceFolder}/releaseNoteGenerator.js",
-			"envFile": "${workspaceFolder}/.env",
-			"console": "integratedTerminal",
-			"internalConsoleOptions": "neverOpen"
+			"envFile": "${workspaceFolder}/.env"
 		},
 		{
 			"type": "node",
-			"request": "attach",
-			"name": "Attach to Process",
-			"processId": "${command:PickProcess}",
-			"skipFiles": ["<node_internals>/**"]
+			"request": "launch",
+			"name": "Generate Notes (Latest to Previous)",
+			"skipFiles": ["<node_internals>/**"],
+			"program": "${workspaceFolder}/releaseNoteGenerator.js",
+			"args": ["${input:endVersion}"],
+			"envFile": "${workspaceFolder}/.env"
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Generate Notes (Between Versions)",
+			"skipFiles": ["<node_internals>/**"],
+			"program": "${workspaceFolder}/releaseNoteGenerator.js",
+			"args": ["${input:endVersion}", "${input:startVersion}"],
+			"envFile": "${workspaceFolder}/.env"
+		}
+	],
+	"inputs": [
+		{
+			"id": "endVersion",
+			"type": "promptString",
+			"description": "Enter the end version (e.g., v2.0.0)",
+			"default": "v2.0.0"
+		},
+		{
+			"id": "startVersion",
+			"type": "promptString",
+			"description": "Enter the start version (e.g., v1.0.0)",
+			"default": "v1.0.0"
 		}
 	]
 }
