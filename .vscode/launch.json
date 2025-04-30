@@ -1,0 +1,22 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug Release Note Generator",
+			"skipFiles": ["<node_internals>/**"],
+			"program": "${workspaceFolder}/releaseNoteGenerator.js",
+			"envFile": "${workspaceFolder}/.env",
+			"console": "integratedTerminal",
+			"internalConsoleOptions": "neverOpen"
+		},
+		{
+			"type": "node",
+			"request": "attach",
+			"name": "Attach to Process",
+			"processId": "${command:PickProcess}",
+			"skipFiles": ["<node_internals>/**"]
+		}
+	]
+}

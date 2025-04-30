@@ -1,6 +1,22 @@
+# Dependencies
+node_modules/
 
+# Environment variables
 .env
-Template/
-node_modules
+
+
+# OS files
 .DS_Store
-.env
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+Template/
+
+# Output files
+output/*
+!output/.gitkeep

@@ -110,7 +110,7 @@ class ReleaseNoteGenerator {
 	cleanupOldFiles() {
 		try {
 			// Clean up PDF files
-			const files = fs.readdirSync('.');
+			const files = fs.readdirSync('./output');
 			const releaseNoteFiles = files.filter(
 				(file) =>
 					file.startsWith('release-notes-') &&
@@ -118,7 +118,7 @@ class ReleaseNoteGenerator {
 			);
 
 			releaseNoteFiles.forEach((file) => {
-				fs.unlinkSync(file);
+				fs.unlinkSync(`./output/${file}`);
 				console.log(`Cleaned up old file: ${file}`);
 			});
 		} catch (error) {
@@ -128,7 +128,7 @@ class ReleaseNoteGenerator {
 
 	generateMarkdownFile(markdownContent, tagName) {
 		try {
-			const outputPath = `release-notes-${tagName}.md`;
+			const outputPath = `./output/release-notes-${tagName}.md`;
 			fs.writeFileSync(outputPath, markdownContent);
 			console.log(`Markdown file generated successfully: ${outputPath}`);
 		} catch (error) {
@@ -147,7 +147,7 @@ class ReleaseNoteGenerator {
 			},
 		});
 
-		const outputPath = `release-notes-${tagName}.pdf`;
+		const outputPath = `./output/release-notes-${tagName}.pdf`;
 		doc.pipe(fs.createWriteStream(outputPath));
 
 		// Header background image
