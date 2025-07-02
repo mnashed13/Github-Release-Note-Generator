@@ -78,7 +78,7 @@ class ReleaseNoteGenerator {
 
 			// Generate formatted release notes
 			console.log('\nGenerating formatted release notes...');
-			const releaseNotes = this.formatReleaseNotes(
+			const releaseNotes = await this.formatReleaseNotes(
 				categorizedPRs,
 				endTagName,
 				startTagName
@@ -194,21 +194,63 @@ class ReleaseNoteGenerator {
 				},
 			};
 
-			const response = await axios.get(
-				`${this.apiBaseUrl}/repos/${this.owner}/${this.repo}/pulls`,
-				{
-					...config,
-					params: {
-						state: 'closed',
-						sort: 'updated',
-						direction: 'desc',
-						per_page: 100,
-					},
+			let allPRs = [];
+			let page = 1;
+			let hasMore = true;
+
+			// Fetch all pull requests with pagination
+			while (hasMore) {
+				console.log(`Fetching page ${page} of pull requests...`);
+				
+				const response = await axios.get(
+					`${this.apiBaseUrl}/repos/${this.owner}/${this.repo}/pulls`,
+					{
+						...config,
+						params: {
+							state: 'closed',
+							sort: 'updated',
+							direction: 'desc',
+							per_page: 100,
+							page: page,
+						},
+					}
+				);
+
+				const prs = response.data;
+				
+				if (prs.length === 0) {
+					hasMore = false;
+					break;
 				}
-			);
+
+				// Check if we've gone beyond our date range
+				if (startDate) {
+					const oldestPRDate = new Date(prs[prs.length - 1].updated_at);
+					if (oldestPRDate < startDate) {
+						// Add only PRs that are within our date range and stop
+						const relevantPRs = prs.filter(pr => {
+							const updatedDate = new Date(pr.updated_at);
+							return updatedDate >= startDate;
+						});
+						allPRs = allPRs.concat(relevantPRs);
+						hasMore = false;
+						break;
+					}
+				}
+
+				allPRs = allPRs.concat(prs);
+				page++;
+
+				// Stop if we got fewer results than requested (last page)
+				if (prs.length < 100) {
+					hasMore = false;
+				}
+			}
+
+			console.log(`Fetched ${allPRs.length} total pull requests across ${page - 1} pages`);
 
 			// Filter for merged pull requests within the date range
-			const filteredPRs = response.data.filter((pr) => {
+			const filteredPRs = allPRs.filter((pr) => {
 				if (!pr.merged_at) return false;
 
 				const mergedDate = new Date(pr.merged_at);
@@ -268,7 +310,23 @@ class ReleaseNoteGenerator {
 		return categories;
 	}
 
-	formatReleaseNotes(categorizedPRs, endTagName, startTagName = null) {
+	getDefaultEmailTemplate() {
+		return `From: {from_email}
+To: {to_email}
+Cc: {cc_email}
+Subject: Release Notes - {product_name} {release_version}
+
+Dear Team,
+
+Please find the release notes for {product_name} version {release_version} below:
+
+{release_notes}
+
+Best regards,
+Release Bot`;
+	}
+
+	async formatReleaseNotes(categorizedPRs, endTagName, startTagName = null) {
 		console.log('\n=== Formatting Release Notes ===');
 		console.log(
 			`Generating notes for ${endTagName}${
@@ -329,7 +387,11 @@ class ReleaseNoteGenerator {
 		this.cleanupOldFiles();
 
 		// Generate PDF and Markdown files
-		this.generatePDF(categorizedPRs, endTagName);
+		try {
+			await this.generatePDF(categorizedPRs, endTagName);
+		} catch (error) {
+			console.error('Failed to generate PDF:', error.message);
+		}
 		this.generateMarkdownFile(markdownNotes, endTagName);
 
 		// Generate email file
@@ -394,30 +456,37 @@ class ReleaseNoteGenerator {
 	}
 
 	generatePDF(categorizedPRs, tagName) {
-		const doc = new PDFDocument({
-			size: 'A4',
-			margins: {
-				top: 72,
-				bottom: 72,
-				left: 72,
-				right: 72,
-			},
-		});
+		return new Promise((resolve, reject) => {
+			const doc = new PDFDocument({
+				size: 'A4',
+				margins: {
+					top: 72,
+					bottom: 72,
+					left: 72,
+					right: 72,
+				},
+			});
 
-		// Ensure output directory exists
-		if (!fs.existsSync(outputDir)) {
-			fs.mkdirSync(outputDir, { recursive: true });
-		}
+			// Ensure output directory exists
+			if (!fs.existsSync(outputDir)) {
+				fs.mkdirSync(outputDir, { recursive: true });
+			}
 
-		const outputPath = path.join(outputDir, `release-notes-${tagName}.pdf`);
-		const writeStream = fs.createWriteStream(outputPath);
+			const outputPath = path.join(outputDir, `release-notes-${tagName}.pdf`);
+			const writeStream = fs.createWriteStream(outputPath);
 
-		// Handle write stream errors
-		writeStream.on('error', (error) => {
-			console.error('Error writing PDF file:', error.message);
-		});
+			// Handle write stream events
+			writeStream.on('error', (error) => {
+				console.error('Error writing PDF file:', error.message);
+				reject(error);
+			});
 
-		doc.pipe(writeStream);
+			writeStream.on('finish', () => {
+				console.log(`PDF generated successfully: ${outputPath}`);
+				resolve(outputPath);
+			});
+
+			doc.pipe(writeStream);
 
 		// Header background image
 		try {
@@ -518,15 +587,24 @@ class ReleaseNoteGenerator {
 				}
 			);
 
-		doc.end();
-		console.log(`PDF generated successfully: ${outputPath}`);
+			// End the PDF document
+			doc.end();
+		});
 	}
 
 	async generateEmailContent(tagName, categorizedPRs, options = {}) {
 		try {
 			// Read email template
-			const templatePath = './Template/email-template.eml';
-			let emailTemplate = fs.readFileSync(templatePath, 'utf8');
+			const templatePath = path.join(__dirname, 'Template', 'email-template.eml');
+			let emailTemplate;
+			
+			// Try to read template file, fallback to default template if not found
+			try {
+				emailTemplate = fs.readFileSync(templatePath, 'utf8');
+			} catch (error) {
+				console.log('Email template not found, using default template');
+				emailTemplate = this.getDefaultEmailTemplate();
+			}
 
 			// Generate release notes in a format suitable for email
 			let emailReleaseNotes = '';
@@ -639,7 +717,15 @@ class ReleaseNoteGenerator {
 				'Template',
 				'email-template.eml'
 			);
-			let emailTemplate = fs.readFileSync(templatePath, 'utf8');
+			let emailTemplate;
+			
+			// Try to read template file, fallback to default template if not found
+			try {
+				emailTemplate = fs.readFileSync(templatePath, 'utf8');
+			} catch (error) {
+				console.log('Email template not found, using default template');
+				emailTemplate = this.getDefaultEmailTemplate();
+			}
 
 			// Replace placeholders in the template
 			const replacements = {
